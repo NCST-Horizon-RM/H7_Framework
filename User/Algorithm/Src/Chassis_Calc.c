@@ -60,6 +60,8 @@ void MecanumResolve(float *wheel_rpm, float vx_temp, float vy_temp, float vr, me
 //待修改
     // if(DBUS->KeyBoard.V_PreeNumber && (CAP_DATA->GET.capVolt  > 180.0f || Root->Power == RUI_DF_OFFLINE))
     // {   //V键开电容,写死最大功率
+
+
     //     MAX_POWER = 250.0f;
     // }
     // else
