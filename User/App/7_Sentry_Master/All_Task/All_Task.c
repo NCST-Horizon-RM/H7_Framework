@@ -5,7 +5,6 @@
 
 #include "BSP_SPI.h"
 #include "Robot_Config.h"
-#include "Catapult_Ctrl.h"
 #include "Chassis_Ctrl.h"
 #include "DBUS.h"
 #include "Message_Center.h"
@@ -17,6 +16,7 @@
 #include "System_Indicator.h"
 #include "Vofa.h"
 #include "VT13.h"
+#include "Gimbal_Ctrl.h"
 //指令中心任务 200Hz
 static uint32_t CMD_DWT_Count = 0;
 static float cmd_period_s = 0.0f;
@@ -94,7 +94,7 @@ void Motor_Task(void *argument)
 
     motor_DWT_Count = DWT->CYCCNT;
     Chassis_Control_Init();
-    Shoot_Control_Init();
+    Gimbal_Init();
     for(;;)
     {
         vTaskDelayUntil(&xLastWakeTime, xTimeIncrement);
@@ -105,7 +105,7 @@ void Motor_Task(void *argument)
         if (g_motor_sub) SubGetMessage(g_motor_sub, &gimbal_m);
         if (s_motor_sub)  SubGetMessage(s_motor_sub, &shoot_m);
 
-        Shoot_Control_Task(&shoot_motors, &gimbal_motors);
+        Gimbal_Task(&gimbal_motors);
         Chassis_Control_Task(&chassis_m,&imu);
         VOFA_JustFloat(NULL, 13, IMU_Data.pitch, IMU_Data.roll,imu.yaw,IMU_Data.temp,
             IMU_Data.accel[0],IMU_Data.accel[1],IMU_Data.accel[2],

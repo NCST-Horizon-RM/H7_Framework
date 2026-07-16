@@ -28,13 +28,17 @@ typedef struct {
 typedef enum {
     GIMBAL_CMD_SAFE = 0,     // 安全锁死
     GIMBAL_CMD_MANUAL,       // 键鼠/遥控器控制
-    GIMBAL_CMD_AUTO_AIM      // 视觉自瞄控制
+    GIMBAL_CMD_AUTO_AIM,      // 视觉自瞄控制
+    GIMBAL_CMD_SEARCH
 } Gimbal_Mode_e;
 
 typedef struct {
     Gimbal_Mode_e mode;
+    uint8_t transform;
     float target_pitch;      // 目标 Pitch 角度
     float target_yaw;        // 目标 Yaw 角度
+    float target_Yaw;
+    float target;
 } Gimbal_Cmd_t;
 
 // 发射机构控制指令

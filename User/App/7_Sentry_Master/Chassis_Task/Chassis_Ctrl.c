@@ -151,11 +151,16 @@ void Chassis_Control_Task(const Chassis_Motor_Group_t *c_motor,
                 vy_tar = cmd.target_vy;
                 vw_tar = cmd.target_vw;
             }break;
+            case CHASSIS_CMD_DIRECT: {
+                vx_tar = cmd.target_vx;
+                vy_tar = cmd.target_vy;
+                cmd.offset_angle_chassis = atan2f(vy_tar, vx_tar);
+                vw_tar = PID_Calculate(&chassis_ctrl.PID_Follow,cmd.offset_angle_chassis,0);
+            }break;
             case CHASSIS_CMD_FOLLOW: {
                 vx_tar = cmd.target_vx;
                 vy_tar = cmd.target_vy;
-                cmd.offset_angle = atan2f(vy_tar, vx_tar);
-                vw_tar = PID_Calculate(&chassis_ctrl.PID_Follow,cmd.offset_angle,0);
+                vw_tar = PID_Calculate(&chassis_ctrl.PID_Follow,cmd.offset_angle_chassis,0);
             }break;
             default:
             break;

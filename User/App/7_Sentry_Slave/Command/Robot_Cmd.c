@@ -46,8 +46,6 @@ static Chassis_Cmd_t chassis_cmd = {0};
 static Gimbal_Cmd_t gimbal_cmd = {0};
 static Shoot_Cmd_t shoot_cmd = {0};
 
-extern B2B_Tx_t Tx_Data;
-
 // --- 私有函数声明 ---
 static void Cmd_Handle_Safe_Mode(void);
 static void Cmd_Update_Remote_Ctrl(void);
@@ -163,5 +161,5 @@ static void Cmd_Update_Mouse_Key(void)
 static void Cmd_DualBoard_Sync(void)
 {
 
-    DualBoard_Send(LINK_CAN, &Tx_Data, sizeof(B2B_Tx_t));
+    //DualBoard_Send(LINK_CAN, &Tx_Data, sizeof(B2B_Tx_t));
 }
