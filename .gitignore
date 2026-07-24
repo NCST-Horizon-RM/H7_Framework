@@ -6,7 +6,7 @@ H7-GDB.jdebug.user
 .settings/
 .idea/
 .vscode/
-.clangd/
+.clangd
 .ideagit rm -r --cached .
 mx.scratch
 H7一键启动OpenOCD.bat

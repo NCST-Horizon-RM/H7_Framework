@@ -8,6 +8,7 @@ static void Referee_System_Info_Update(uint16_t cmd_id, uint8_t *data_ptr, Refer
 
 void Referee_System_Frame_Update(uint8_t *Buff, void *device_ptr, uint16_t Size)
 {
+    Referee_Data_t*Referee = (Referee_Data_t*)device_ptr;
     uint16_t i = 0;
     uint16_t data_length = 0;
     uint16_t cmd_id = 0;
@@ -40,7 +41,7 @@ void Referee_System_Frame_Update(uint8_t *Buff, void *device_ptr, uint16_t Size)
                 {
                     cmd_id = (uint16_t)(remain_buf[FrameHeader_Length + 1] << 8 | remain_buf[FrameHeader_Length]);
                     data_ptr = &remain_buf[FrameHeader_Length + CMDID_Length];
-                    Referee_System_Info_Update(cmd_id, data_ptr, &Referee);
+                    Referee_System_Info_Update(cmd_id, data_ptr, Referee);
                 }
                 // 拼接包处理完毕，新缓冲区的指针需要向后跳过被借走的 need_len 字节
                 i = need_len;
@@ -93,7 +94,7 @@ void Referee_System_Frame_Update(uint8_t *Buff, void *device_ptr, uint16_t Size)
                     cmd_id = (uint16_t)(Buff[i + FrameHeader_Length + 1] << 8 | Buff[i + FrameHeader_Length]);
                     data_ptr = &Buff[i + FrameHeader_Length + CMDID_Length];
 
-                    Referee_System_Info_Update(cmd_id, data_ptr, &Referee);
+                    Referee_System_Info_Update(cmd_id, data_ptr, Referee);
 
                     i += data_length; // 成功跳过整帧
                     continue;
