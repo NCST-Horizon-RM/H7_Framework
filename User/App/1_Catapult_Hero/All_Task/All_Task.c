@@ -106,10 +106,6 @@ void Motor_Task(void *argument)
         if (s_motor_sub)  SubGetMessage(s_motor_sub, &shoot_m);
 
         //Shoot_Control_Task(&shoot_motors, &gimbal_motors,motor_period_s);
-        Chassis_Control_Task(&chassis_m,motor_period_s);
-        VOFA_JustFloat(&huart10, 13, IMU_Data.pitch, IMU_Data.roll,imu.yaw,IMU_Data.temp,
-            IMU_Data.accel[0],IMU_Data.accel[1],IMU_Data.accel[2],
-            IMU_Data.gyro[0],IMU_Data.gyro[1],IMU_Data.gyro[2],imu_period_s);
     }
 }
 

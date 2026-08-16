@@ -54,61 +54,6 @@ static uint8_t Gyro_ReadReg(uint8_t reg) {
     return val;
 }
 
-// 二阶滤波器状态结构体
-typedef struct {
-    float b0, b1, b2; // 前馈系数 (Feedforward)
-    float a1, a2;     // 反馈系数 (Feedback)
-    float x1, x2;     // 输入历史 x[n-1], x[n-2]
-    float y1, y2;     // 输出历史 y[n-1], y[n-2]
-} Butterworth2nd_t;
-
-// 滤波函数
-float Butterworth2nd_Apply(Butterworth2nd_t *filt, float input) {
-    float output = (filt->b0 * input) + (filt->b1 * filt->x1) + (filt->b2 * filt->x2)
-                 - (filt->a1 * filt->y1) - (filt->a2 * filt->y2);
-    filt->x2 = filt->x1;
-    filt->x1 = input;
-    filt->y2 = filt->y1;
-    filt->y1 = output;
-    return output;
-}
-
-// 根据采样率 (fs) 和截止频率 (fc) 动态计算参数并初始化
-void Butterworth2nd_Init_ByFreq(Butterworth2nd_t *filt, float fs, float fc) {
-    // 根据奈奎斯特采样定理，截止频率不能超过采样率的一半
-    if (fc >= fs / 2.0f) {
-        fc = (fs / 2.0f) - 1.0f;
-    }
-    // 双线性变换 (Bilinear Transform)
-    float omega_c = tanf(PI * fc / fs);
-    float omega_c2 = omega_c * omega_c;
-    float sqrt2_omega_c = 1.414213562373095f * omega_c; // sqrt(2) * omega_c
-    // 归一化常数
-    float N = 1.0f + sqrt2_omega_c + omega_c2;
-    // 计算前馈系数 b
-    filt->b0 = omega_c2 / N;
-    filt->b1 = 2.0f * filt->b0;
-    filt->b2 = filt->b0;
-    // 计算反馈系数 a
-    filt->a1 = 2.0f * (omega_c2 - 1.0f) / N;
-    filt->a2 = (1.0f - sqrt2_omega_c + omega_c2) / N;
-    // 清零历史状态
-    filt->x1 = 0.0f; filt->x2 = 0.0f;
-    filt->y1 = 0.0f; filt->y2 = 0.0f;
-}
-
-static Butterworth2nd_t bmi088_accel_filter[3];
-static Butterworth2nd_t bmi088_gyro_filter[3];
-static uint8_t is_filter_initialized = 0;
-
-void BMI088_Filter_Init(float sys_fs,float acc_fc,float gyr_fc) {
-    for(int i = 0; i < 3; i++) {
-        Butterworth2nd_Init_ByFreq(&bmi088_accel_filter[i], sys_fs, acc_fc);
-        Butterworth2nd_Init_ByFreq(&bmi088_gyro_filter[i],  sys_fs, gyr_fc);
-    }
-    is_filter_initialized = 1;
-}
-
 uint8_t BMI088_Init(void) {
     uint8_t dummy = 0;
     // ================= Accel 启动流修正 =================
@@ -155,8 +100,6 @@ uint8_t BMI088_Init(void) {
     Gyro_WriteReg(REG_GYRO_INT3_INT4_IO_CONF, 0x00);
     Gyro_WriteReg(REG_GYRO_CTRL, 0x80);             // 开启 Gyro 的 DRDY
     Gyro_WriteReg(REG_GYRO_INT3_INT4_IO_MAP, 0x01); // 映射 DRDY 到 INT3
-
-    BMI088_Filter_Init(1000,40,100); // 初始化滤波器
 
     return 0;
 }
@@ -218,7 +161,7 @@ void BMI088_read(float gyro[3], float accel[3], float *temperature) {
     *temperature = (raw_val * 0.125f) + 23.0f;
 }
 
-/*void BMI088_Read_Fast(float gyro[3], float accel[3], float *temperature) {
+void BMI088_Read_Fast(float gyro[3], float accel[3], float *temperature) {
     uint8_t a_buf[7] = {0};
     uint8_t g_buf[6] = {0};
     uint8_t t_buf[3] = {0};
@@ -253,66 +196,6 @@ void BMI088_read(float gyro[3], float accel[3], float *temperature) {
     gyro[0] = (int16_t)((g_buf[1] << 8) | g_buf[0]) * gyr_res;
     gyro[1] = (int16_t)((g_buf[3] << 8) | g_buf[2]) * gyr_res;
     gyro[2] = (int16_t)((g_buf[5] << 8) | g_buf[4]) * gyr_res;
-
-    int16_t temp_raw_val = (int16_t)((t_buf[1] << 3) | (t_buf[2] >> 5));
-    if (temp_raw_val > 1023) {
-        temp_raw_val -= 2048;
-    }
-
-    *temperature = (temp_raw_val * 0.125f) + 23.0f;
-}*/
-void BMI088_Read_Fast(float gyro[3], float accel[3], float *temperature) {
-    uint8_t a_buf[7] = {0};
-    uint8_t g_buf[6] = {0};
-    uint8_t t_buf[3] = {0};
-    uint8_t addr;
-
-    float raw_accel[3];
-    float raw_gyro[3];
-
-    // Read Accel: BMI088 accel SPI has one dummy byte before the 6 data bytes.
-    addr = REG_ACC_XOUT_L | 0x80;
-    ACCEL_CS(0);
-    BSP_SPI_Transmit(&addr, 1, 10);
-    BSP_SPI_Receive(a_buf, 7, 10);
-    ACCEL_CS(1);
-
-    // Read Gyro: gyro SPI returns data immediately after the address phase.
-    addr = REG_GYRO_X_L | 0x80;
-    GYRO_CS(0);
-    BSP_SPI_Transmit(&addr, 1, 10);
-    BSP_SPI_Receive(g_buf, 6, 10);
-    GYRO_CS(1);
-
-    // Read Temp separately. TEMP_M/TEMP_L are at 0x22/0x23, not after ACC_XOUT_Z.
-    addr = REG_TEMP_M | 0x80;
-    ACCEL_CS(0);
-    BSP_SPI_Transmit(&addr, 1, 10);
-    BSP_SPI_Receive(t_buf, 3, 10);
-    ACCEL_CS(1);
-
-    // 1. 获取原始物理数据 (Raw Data)
-    raw_accel[0] = (int16_t)((a_buf[2] << 8) | a_buf[1]) * acc_res;
-    raw_accel[1] = (int16_t)((a_buf[4] << 8) | a_buf[3]) * acc_res;
-    raw_accel[2] = (int16_t)((a_buf[6] << 8) | a_buf[5]) * acc_res;
-
-    raw_gyro[0] = (int16_t)((g_buf[1] << 8) | g_buf[0]) * gyr_res;
-    raw_gyro[1] = (int16_t)((g_buf[3] << 8) | g_buf[2]) * gyr_res;
-    raw_gyro[2] = (int16_t)((g_buf[5] << 8) | g_buf[4]) * gyr_res;
-
-    // 2. 将原始数据送入滤波器
-    if (is_filter_initialized) {
-        for(int i = 0; i < 3; i++) {
-            accel[i] = Butterworth2nd_Apply(&bmi088_accel_filter[i], raw_accel[i]);
-            gyro[i]  = Butterworth2nd_Apply(&bmi088_gyro_filter[i],  raw_gyro[i]);
-        }
-    } else {
-        // 如果未初始化，直接透传
-        for(int i = 0; i < 3; i++) {
-            accel[i] = raw_accel[i];
-            gyro[i]  = raw_gyro[i];
-        }
-    }
 
     int16_t temp_raw_val = (int16_t)((t_buf[1] << 3) | (t_buf[2] >> 5));
     if (temp_raw_val > 1023) {
