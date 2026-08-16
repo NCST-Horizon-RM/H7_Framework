@@ -74,11 +74,13 @@ void DM_1to4_Resolve(void* instance, uint8_t* rx_data)
  * @brief 达妙电机模式切换命令
  * @param hcan     FDCAN 句柄
  * @param motor_id 电机 ID (Base ID)
+ * @param mode_id  模式 ID (MIT_MODE, POS_MODE, SPEED_MODE)
  * @param what     具体操作 (DMMotor_Mode_e 枚举值)
  */
-void Motor_Mode(hcan_t* hcan, uint16_t motor_id, DMMotor_Mode_e what)
+void Motor_Mode(hcan_t* hcan, uint16_t motor_id, uint16_t mode_id, DMMotor_Mode_e what)
 {
     uint8_t data[8];
+    uint16_t id = motor_id + mode_id;
 
     data[0] = 0xFF;
     data[1] = 0xFF;
@@ -89,7 +91,7 @@ void Motor_Mode(hcan_t* hcan, uint16_t motor_id, DMMotor_Mode_e what)
     data[6] = 0xFF;
     data[7] = what;
 
-    FDCAN_Send_Msg(hcan, motor_id, data, 8);
+    FDCAN_Send_Msg(hcan, id, data, 8);
 }
 
 /**
