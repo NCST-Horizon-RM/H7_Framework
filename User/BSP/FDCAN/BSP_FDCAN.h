@@ -7,6 +7,14 @@
 
 #include "fdcan.h"
 
+ /**
+ * @brief FDCAN工作模式枚举
+ */
+typedef enum {
+    CLASSIC_1M = 0,   // 经典 CAN，标称段 1Mbps
+    FD_5M,     // FD，数据段 5Mbps
+} FDCAN_Work_Mode_e;
+
 // CAN接收统计数据结构
 typedef struct
 {
@@ -28,9 +36,10 @@ typedef struct {
     uint32_t id;
     void *device_ptr;
     BSP_CAN_Callback_t resolve;
+    uint8_t is_valid;
 } BSP_CAN_Hash_Node_t;
 
-void BSP_CAN_Register_Slot(FDCAN_HandleTypeDef *hfdcan, uint32_t id, void *device_ptr, BSP_CAN_Callback_t callback);
+int BSP_CAN_Register_Slot(FDCAN_HandleTypeDef *hfdcan, uint32_t id, void *device_ptr, BSP_CAN_Callback_t callback);
 
 typedef struct {
     FDCAN_GlobalTypeDef *instance;
@@ -56,7 +65,7 @@ static const Auto_CAN_Reg_t MACRO_CONCAT(_can_reg_, __LINE__) = { \
 void BSP_CAN_Auto_Init(void);
 
 typedef FDCAN_HandleTypeDef hcan_t;
-void FDCAN_Config(FDCAN_HandleTypeDef *hfdcan, uint32_t fifo);
+void FDCAN_Config(FDCAN_HandleTypeDef *hfdcan, FDCAN_Work_Mode_e mode, uint32_t fifo);
 extern uint8_t FDCAN_Send_Msg(FDCAN_HandleTypeDef *hfdcan, uint32_t id, uint8_t *data, uint32_t len);
 
 #endif //H7_FRAMEWORK_BSP_FDCAN_H

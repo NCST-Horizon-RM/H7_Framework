@@ -4,6 +4,7 @@
 /**
  * @brief FDCAN外设配置函数
  * @param hfdcan FDCAN句柄
+ * @param mode   选择工作模式（CLASSIC_1M 或 FD_5M）
  * @param fifo   选择接收FIFO（FDCAN_RX_FIFO0或FDCAN_RX_FIFO1）
  * @note 该函数完成以下配置：
  *       0. 重置外设：在配置前先进行去初始化和重新初始化
@@ -12,10 +13,12 @@
  *       3. 开启中断：根据传入的 FIFO 开启对应的中断源（含溢出、丢失等）
  *       4. 启动外设
  */
-void FDCAN_Config(FDCAN_HandleTypeDef *hfdcan, uint32_t fifo)
+void FDCAN_Config(FDCAN_HandleTypeDef *hfdcan, FDCAN_Work_Mode_e mode, uint32_t fifo)
 {
     // 重置FDCAN外设：去初始化后重新初始化，确保外设处于干净状态
     if (HAL_FDCAN_DeInit(hfdcan) != HAL_OK) Error_Handler();
+    // 配置FDCAN模式
+    hfdcan->Init.FrameFormat = (mode == FD_5M) ? FDCAN_FRAME_FD_BRS : FDCAN_FRAME_CLASSIC;
     if (HAL_FDCAN_Init(hfdcan) != HAL_OK) Error_Handler();
 
     FDCAN_FilterTypeDef sFilterConfig = {0};
@@ -35,17 +38,17 @@ void FDCAN_Config(FDCAN_HandleTypeDef *hfdcan, uint32_t fifo)
 
     // 根据选择的 FIFO 开启对应的中断源
     uint32_t it_source = FDCAN_IT_BUS_OFF |
-                         FDCAN_IT_ARB_PROTOCOL_ERROR |
-                         FDCAN_IT_DATA_PROTOCOL_ERROR;
+                        FDCAN_IT_ARB_PROTOCOL_ERROR |
+                        FDCAN_IT_DATA_PROTOCOL_ERROR;
     if (fifo == FDCAN_RX_FIFO0)
     {
-        it_source = FDCAN_IT_RX_FIFO0_NEW_MESSAGE |
+        it_source |= FDCAN_IT_RX_FIFO0_NEW_MESSAGE |
                     FDCAN_IT_RX_FIFO0_FULL |
                     FDCAN_IT_RX_FIFO0_MESSAGE_LOST;
     }
-    else // FDCAN_RX_FIFO1
+    else
     {
-        it_source = FDCAN_IT_RX_FIFO1_NEW_MESSAGE |
+        it_source |= FDCAN_IT_RX_FIFO1_NEW_MESSAGE |
                     FDCAN_IT_RX_FIFO1_FULL |
                     FDCAN_IT_RX_FIFO1_MESSAGE_LOST;
     }
@@ -97,7 +100,7 @@ uint8_t DLC_To_Bytes(uint32_t dlc) {
         case FDCAN_DLC_BYTES_6: return 6;
         case FDCAN_DLC_BYTES_7: return 7;
         case FDCAN_DLC_BYTES_8: return 8;
-            // 如果是 CAN FD 模式，还需要处理以下部分
+        // 如果是 CAN FD 模式，还需要处理以下部分
         case FDCAN_DLC_BYTES_12: return 12;
         case FDCAN_DLC_BYTES_16: return 16;
         case FDCAN_DLC_BYTES_20: return 20;
@@ -125,8 +128,8 @@ uint8_t FDCAN_Send_Msg(FDCAN_HandleTypeDef *hfdcan, uint32_t id, uint8_t *data, 
         .TxFrameType = FDCAN_DATA_FRAME, // 数据帧
         .DataLength = Bytes_To_DLC(len), // 根据长度转换为DLC
         .ErrorStateIndicator = FDCAN_ESI_ACTIVE, // 错误状态指示器：主动状态
-        .BitRateSwitch = FDCAN_BRS_OFF, // 位速率切换：关闭（如果需要FD模式请改为FDCAN_BRS_ON）
-        .FDFormat = (len > 8) ? FDCAN_FD_CAN : FDCAN_CLASSIC_CAN, // 自动切换 FD 模式
+        .BitRateSwitch = (hfdcan->Init.FrameFormat == FDCAN_FRAME_FD_BRS) ? FDCAN_BRS_ON : FDCAN_BRS_OFF, // 如果是FD模式，开启BRS
+        .FDFormat = (hfdcan->Init.FrameFormat == FDCAN_FRAME_FD_BRS) ? FDCAN_FD_CAN : FDCAN_CLASSIC_CAN, // 自动切换 FD 模式
         .TxEventFifoControl = FDCAN_NO_TX_EVENTS, // 不使用事件FIFO
         .MessageMarker = 0 // 消息标记，用户自定义用途
     };
@@ -218,34 +221,37 @@ void BSP_CAN_Auto_Init(void)
 // 哈希表
 static BSP_CAN_Hash_Node_t BSP_Hash_Table[CAN_BUS_NUM][CAN_HASH_SIZE] = {0};
 
-static inline uint8_t Get_CAN_Bus_Index(FDCAN_HandleTypeDef *hfdcan)
+static inline int8_t Get_CAN_Bus_Index(FDCAN_HandleTypeDef *hfdcan)
 {
     if (hfdcan->Instance == FDCAN1) return 0;
     if (hfdcan->Instance == FDCAN2) return 1;
     if (hfdcan->Instance == FDCAN3) return 2;
-    return 0;
+    return -1;   // 未知实例
 }
 
 /**
  * @brief 动态注册槽位函数：供应用层初始化时调用，用于填充哈希表
  */
-void BSP_CAN_Register_Slot(FDCAN_HandleTypeDef *hfdcan, uint32_t id, void *device_ptr, BSP_CAN_Callback_t callback)
+int BSP_CAN_Register_Slot(FDCAN_HandleTypeDef *hfdcan, uint32_t id, void *device_ptr, BSP_CAN_Callback_t callback)
 {
     uint8_t bus_idx = Get_CAN_Bus_Index(hfdcan);
+    if (bus_idx >= CAN_BUS_NUM) return -1;
+
     uint32_t hash_idx = id & CAN_HASH_MASK;
     uint32_t start_idx = hash_idx;
-    // 线性探测找空位
-    while (BSP_Hash_Table[bus_idx][hash_idx].id != 0)
+    // 线性探测：跳过已占用且 ID 不同的槽位
+    while (BSP_Hash_Table[bus_idx][hash_idx].is_valid == 1 &&
+           BSP_Hash_Table[bus_idx][hash_idx].id != id)
     {
-        if (BSP_Hash_Table[bus_idx][hash_idx].id == id) {
-            break; // 如果重复注册同一个 ID，直接覆盖
-        }
         hash_idx = (hash_idx + 1) & CAN_HASH_MASK;
-        if (hash_idx == start_idx) return;
+        if (hash_idx == start_idx) return -2;   // 表满
     }
+    // 此时 hash_idx 指向空槽或相同 ID 的槽，直接写入（覆盖旧值）
     BSP_Hash_Table[bus_idx][hash_idx].id = id;
     BSP_Hash_Table[bus_idx][hash_idx].device_ptr = device_ptr;
     BSP_Hash_Table[bus_idx][hash_idx].resolve = callback;
+    BSP_Hash_Table[bus_idx][hash_idx].is_valid = 1;
+    return 0;
 }
 
 /**
@@ -255,9 +261,12 @@ void CAN_App_Frame_Dispatch(FDCAN_HandleTypeDef *hfdcan, uint32_t identifier, ui
 {
     (void)len;
     uint8_t bus_idx = Get_CAN_Bus_Index(hfdcan);
+    if (bus_idx >= CAN_BUS_NUM) return;
+
     uint32_t hash_idx = identifier & CAN_HASH_MASK;
     uint32_t start_idx = hash_idx;
-    while (BSP_Hash_Table[bus_idx][hash_idx].id != 0)
+
+    while (BSP_Hash_Table[bus_idx][hash_idx].is_valid == 1)
     {
         if (BSP_Hash_Table[bus_idx][hash_idx].id == identifier)
         {
@@ -267,7 +276,7 @@ void CAN_App_Frame_Dispatch(FDCAN_HandleTypeDef *hfdcan, uint32_t identifier, ui
             return;
         }
         hash_idx = (hash_idx + 1) & CAN_HASH_MASK;
-        if (hash_idx == start_idx) return;
+        if (hash_idx == start_idx) return;   // 已遍历一圈，未找到
     }
 }
 
